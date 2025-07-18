@@ -139,6 +139,47 @@ export const usePatientWorkflows = (patientId?: string) => {
     }
   };
 
+  const saveEditState = async (
+    workflowId: string,
+    editState: PatientWorkflow['editState']
+  ): Promise<void> => {
+    try {
+      const workflowRef = doc(db, 'patientWorkflows', workflowId);
+      await updateDoc(workflowRef, {
+        editState: {
+          ...editState,
+          lastEditedAt: serverTimestamp(),
+        },
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to save edit state');
+      throw error;
+    }
+  };
+
+  const saveDraft = async (
+    workflowId: string,
+    draftData: {
+      toothConditions: PatientWorkflow['toothConditions'];
+      workflowNodes: PatientWorkflow['workflowNodes'];
+      editState: PatientWorkflow['editState'];
+      settings: PatientWorkflow['settings'];
+    }
+  ): Promise<void> => {
+    try {
+      const workflowRef = doc(db, 'patientWorkflows', workflowId);
+      await updateDoc(workflowRef, {
+        ...draftData,
+        status: 'draft',
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to save draft');
+      throw error;
+    }
+  };
+
   const updateWorkflowStatus = async (
     workflowId: string,
     status: PatientWorkflow['status']
@@ -195,5 +236,7 @@ export const usePatientWorkflows = (patientId?: string) => {
     getWorkflowById,
     getWorkflowsByPatient,
     getActiveWorkflows,
+    saveEditState,
+    saveDraft,
   };
 };

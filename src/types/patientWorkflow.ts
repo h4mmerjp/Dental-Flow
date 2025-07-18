@@ -1,4 +1,16 @@
-import { WorkflowNode, WorkflowSettings, ToothConditions } from './dentalWorkflow';
+import { WorkflowNode, WorkflowSettings, ToothConditions, SelectedTreatmentOptions } from './dentalWorkflow';
+
+export interface ScheduleSlot {
+  id: string;
+  slotNumber: number;
+  treatmentNodes: WorkflowNode[];
+}
+
+export interface WorkflowEditState {
+  scheduleSlots: ScheduleSlot[];
+  selectedTreatmentOptions: { [treatmentKey: string]: number };
+  lastEditedAt: any; // Firestore Timestamp
+}
 
 export interface PatientWorkflow {
   id: string;                    // Firestore document ID
@@ -9,6 +21,7 @@ export interface PatientWorkflow {
   workflowNodes: WorkflowNode[]; // Generated workflow nodes
   settings: WorkflowSettings;    // Workflow settings used
   status: 'draft' | 'active' | 'completed' | 'paused'; // Workflow status
+  editState?: WorkflowEditState; // Current editing state
   createdAt: any;               // Firestore Timestamp
   updatedAt: any;               // Firestore Timestamp
   completedAt?: any;            // Completion timestamp
@@ -56,3 +69,16 @@ export const getWorkflowStatusColor = (status: PatientWorkflow['status']): strin
   };
   return colors[status];
 };
+
+export interface EditSession {
+  id: string;
+  sessionName: string;
+  patientId: string;
+  toothConditions: ToothConditions;
+  workflowNodes: WorkflowNode[];
+  scheduleSlots: ScheduleSlot[];
+  selectedTreatmentOptions: SelectedTreatmentOptions;
+  settings: WorkflowSettings;
+  createdAt: Date;
+  updatedAt: Date;
+}

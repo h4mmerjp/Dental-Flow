@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Settings, Plus, Calendar, User, ArrowLeft, Clock, X } from 'lucide-react';
+import { Play, Settings, Plus, Calendar, User, ArrowLeft, Clock, X, Save, Menu, Archive } from 'lucide-react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
@@ -10,7 +10,9 @@ import { usePatients } from '../hooks/usePatients';
 import { ToothChart } from '../components/workflow/ToothChart';
 import { ConditionSelector } from '../components/workflow/ConditionSelector';
 import { WorkflowSettings } from '../components/workflow/WorkflowSettings';
+import { EditSessionList } from '../components/workflow/EditSessionList';
 import { Notification, useNotification } from '../components/layout/Notification';
+import { EditSession } from '../types/patientWorkflow';
 
 interface DentalWorkflowPageProps {
   patientId?: string | null;
@@ -41,7 +43,8 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
     moveTreatment,
     getToothDisplayConditions,
     setSelectedTooth,
-    setToothConditions
+    setToothConditions,
+    setWorkflow
   } = useDentalWorkflow();
 
   const { patients } = usePatients();
@@ -52,6 +55,12 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
   const [currentWorkflowData, setCurrentWorkflowData] = useState<any>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [scheduleSlots, setScheduleSlots] = useState<any[]>([]);
+  const [showSessionDialog, setShowSessionDialog] = useState(false);
+  const [sessionName, setSessionName] = useState('');
+  const [showSessionList, setShowSessionList] = useState(false);
+  const [showSessionMenu, setShowSessionMenu] = useState(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const selectedPatient = patientId ? patients.find(p => p.id === patientId) : null;
 
@@ -67,6 +76,57 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
       }
     }
   }, [workflowId, getWorkflowById, setToothConditions, updateSettings]);
+
+  // セッションメニューの外側クリックでメニューを閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showSessionMenu && !(event.target as Element).closest('.relative')) {
+        setShowSessionMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSessionMenu]);
+
+  // 自動保存機能
+  useEffect(() => {
+    if (!autoSaveEnabled || !selectedPatient || workflow.length === 0) {
+      return;
+    }
+
+    const autoSaveTimer = setTimeout(() => {
+      if (currentSessionId) {
+        // 既存のセッションを更新
+        try {
+          const existingSessions = JSON.parse(localStorage.getItem('editSessions') || '[]');
+          const sessionIndex = existingSessions.findIndex((s: EditSession) => s.id === currentSessionId);
+          
+          if (sessionIndex !== -1) {
+            const updatedSession = {
+              ...existingSessions[sessionIndex],
+              toothConditions,
+              workflowNodes: workflow,
+              scheduleSlots,
+              selectedTreatmentOptions: workflow.reduce((acc, node) => {
+                acc[node.treatmentKey] = node.selectedTreatmentIndex;
+                return acc;
+              }, {} as any),
+              settings,
+              updatedAt: new Date()
+            };
+            
+            existingSessions[sessionIndex] = updatedSession;
+            localStorage.setItem('editSessions', JSON.stringify(existingSessions));
+          }
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
+    }, 5000); // 5秒後に自動保存
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [toothConditions, workflow, scheduleSlots, settings, selectedPatient, autoSaveEnabled, currentSessionId]);
 
   // 患者が選択されていない場合
   if (!patientId || !selectedPatient) {
@@ -123,6 +183,86 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
     
     setScheduleSlots(newScheduleSlots);
     showNotification('success', `治療ノード${workflowSteps.length}件を生成しました！`);
+  };
+
+  const handleSaveEditSession = () => {
+    if (!selectedPatient) {
+      showNotification('error', '患者を選択してください');
+      return;
+    }
+
+    if (workflow.length === 0) {
+      showNotification('error', '治療ノードを生成してください');
+      return;
+    }
+
+    const defaultName = `編集セッション - ${selectedPatient.name} - ${new Date().toLocaleDateString()}`;
+    setSessionName(defaultName);
+    setShowSessionDialog(true);
+  };
+
+  const handleSaveSession = () => {
+    if (!sessionName.trim()) {
+      showNotification('error', 'セッション名を入力してください');
+      return;
+    }
+
+    try {
+      const sessionData = {
+        id: Date.now().toString(),
+        sessionName: sessionName.trim(),
+        patientId: selectedPatient!.id,
+        toothConditions,
+        workflowNodes: workflow,
+        scheduleSlots,
+        selectedTreatmentOptions: workflow.reduce((acc, node) => {
+          acc[node.treatmentKey] = node.selectedTreatmentIndex;
+          return acc;
+        }, {} as any),
+        settings,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const existingSessions = JSON.parse(localStorage.getItem('editSessions') || '[]');
+      existingSessions.push(sessionData);
+      localStorage.setItem('editSessions', JSON.stringify(existingSessions));
+
+      // 現在のセッションIDを設定（自動保存のため）
+      setCurrentSessionId(sessionData.id);
+
+      setShowSessionDialog(false);
+      setSessionName('');
+      showNotification('success', `編集セッション「${sessionName}」を保存しました！`);
+    } catch (error) {
+      showNotification('error', '編集セッションの保存に失敗しました');
+      console.error('Error saving edit session:', error);
+    }
+  };
+
+  const handleRestoreSession = (session: EditSession) => {
+    try {
+      // 歯式状態を復元
+      setToothConditions(session.toothConditions);
+      
+      // ワークフロー設定を復元
+      updateSettings(session.settings);
+      
+      // ワークフローノードを復元
+      setWorkflow(session.workflowNodes);
+      
+      // スケジュールスロットを復元
+      setScheduleSlots(session.scheduleSlots);
+      
+      // 現在のセッションIDを設定（自動保存のため）
+      setCurrentSessionId(session.id);
+      
+      setShowSessionList(false);
+      showNotification('success', `編集セッション「${session.sessionName}」を復元しました！`);
+    } catch (error) {
+      showNotification('error', '編集セッションの復元に失敗しました');
+      console.error('Error restoring session:', error);
+    }
   };
 
   const handleSaveToWorkflow = async () => {
@@ -682,6 +822,69 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
               <Play className="w-4 h-4" />
               治療ノード生成
             </button>
+            {/* 編集セッションメニュー */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSessionMenu(!showSessionMenu)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+              >
+                <Archive className="w-4 h-4" />
+                編集セッション
+                <Menu className="w-3 h-3" />
+              </button>
+              
+              {showSessionMenu && (
+                <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                  <div className="py-2">
+                    <button
+                      onClick={() => {
+                        setShowSessionList(true);
+                        setShowSessionMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <Clock className="w-4 h-4" />
+                      セッションから開始
+                    </button>
+                    {workflow.length > 0 && selectedPatient && (
+                      <button
+                        onClick={() => {
+                          handleSaveEditSession();
+                          setShowSessionMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        現在の状態を保存
+                      </button>
+                    )}
+                    <div className="border-t border-gray-200 mt-2 pt-2">
+                      <div className="px-4 py-2 flex items-center justify-between">
+                        <span className="text-sm text-gray-600">自動保存</span>
+                        <button
+                          onClick={() => setAutoSaveEnabled(!autoSaveEnabled)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            autoSaveEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition duration-200 ease-in-out ${
+                              autoSaveEnabled ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      {currentSessionId && (
+                        <div className="px-4 py-1 text-xs text-gray-500">
+                          セッション自動保存中
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             {workflow.length > 0 && selectedPatient && (
               <button
                 onClick={handleSaveToWorkflow}
@@ -795,6 +998,46 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
           onDeleteTreatment={deleteTreatment}
           onMoveTreatment={moveTreatment}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* セッション名入力ダイアログ */}
+      {showSessionDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold mb-4">編集セッション名を入力</h3>
+            <input
+              type="text"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg mb-4"
+              placeholder="セッション名を入力してください"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowSessionDialog(false)}
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveSession}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 編集セッション一覧 */}
+      {showSessionList && (
+        <EditSessionList
+          patientId={patientId}
+          onSelectSession={handleRestoreSession}
+          onClose={() => setShowSessionList(false)}
         />
       )}
 

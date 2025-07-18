@@ -20,7 +20,11 @@
       "mcp__ide__getDiagnostics",
       "Bash(npm install:*)",
       "Bash(firebase login:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(ls:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)"
     ],
     "deny": []
   }
