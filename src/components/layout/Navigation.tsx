@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, FileText, Calendar, Settings, Workflow } from 'lucide-react';
+import { Users, Settings, Workflow } from 'lucide-react';
 
 interface NavigationProps {
   currentPage: string;
@@ -9,9 +9,7 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ currentPage, onPageChange }) => {
   const navItems = [
     { id: 'patients', label: '患者管理', icon: Users },
-    { id: 'treatments', label: '治療計画', icon: FileText },
-    { id: 'workflow', label: 'ワークフロー', icon: Workflow },
-    { id: 'appointments', label: '予約管理', icon: Calendar },
+    { id: 'workflow', label: 'ワークフロー作成', icon: Workflow },
     { id: 'settings', label: '設定', icon: Settings },
   ];
 

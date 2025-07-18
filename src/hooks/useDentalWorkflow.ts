@@ -11,9 +11,11 @@ import {
   DEFAULT_WORKFLOW_SETTINGS,
   TREATMENT_PRIORITY 
 } from '../types/dentalWorkflow';
+import { useWorkflowSettings } from './useWorkflowSettings';
 
 export const useDentalWorkflow = () => {
-  const [settings, setSettings] = useState<WorkflowSettings>(DEFAULT_WORKFLOW_SETTINGS);
+  const { getCurrentSettings } = useWorkflowSettings();
+  const [settings, setSettings] = useState<WorkflowSettings>(getCurrentSettings());
   const [toothConditions, setToothConditions] = useState<ToothConditions>({});
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowNode[]>([]);

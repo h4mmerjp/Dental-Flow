@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { Plus, Search, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Search, Loader2, AlertCircle, FolderOpen } from 'lucide-react';
 import { usePatients } from '../hooks/usePatients';
 import { Patient } from '../types/patient';
 import { formatBirthdateWithAge } from '../utils/ageCalculator';
 import { AddPatientModal } from '../components/patient/AddPatientModal';
 import { Notification, useNotification } from '../components/layout/Notification';
 
-export const PatientListPage: React.FC = () => {
+interface PatientListPageProps {
+  onViewWorkflows?: (patientId: string) => void;
+  onCreateWorkflow?: (patientId: string) => void;
+}
+
+export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflows, onCreateWorkflow }) => {
   const { patients, loading, error, addPatient } = usePatients();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,9 +27,20 @@ export const PatientListPage: React.FC = () => {
     return new Date(date).toLocaleDateString('ja-JP');
   };
 
-  const handleViewTreatmentPlans = (patientId: string) => {
-    // 後で実装：治療計画ページに遷移
-    console.log('治療計画を表示:', patientId);
+  const handleViewWorkflows = (patientId: string) => {
+    if (onViewWorkflows) {
+      onViewWorkflows(patientId);
+    } else {
+      console.log('ワークフローを表示:', patientId);
+    }
+  };
+
+  const handleCreateWorkflow = (patientId: string) => {
+    if (onCreateWorkflow) {
+      onCreateWorkflow(patientId);
+    } else {
+      console.log('ワークフロー作成:', patientId);
+    }
   };
 
   if (loading) {
@@ -130,12 +146,22 @@ export const PatientListPage: React.FC = () => {
                       {formatLastVisitDate(patient.lastVisitDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleViewTreatmentPlans(patient.id)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        治療計画
-                      </button>
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleCreateWorkflow(patient.id)}
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          ワークフロー作成
+                        </button>
+                        <button
+                          onClick={() => handleViewWorkflows(patient.id)}
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-green-600 bg-green-50 hover:bg-green-100 transition-colors"
+                        >
+                          <FolderOpen className="w-3 h-3 mr-1" />
+                          ワークフロー一覧
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

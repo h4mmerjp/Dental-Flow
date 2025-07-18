@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザーが認証されている場合のみアクセス許可
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // patients コレクションのルール
+    match /patients/{patientId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // patientWorkflows コレクションのルール
+    match /patientWorkflows/{workflowId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
