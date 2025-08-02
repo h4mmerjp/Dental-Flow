@@ -1,21 +1,43 @@
 import React, { useState } from 'react';
-import { Plus, Search, Loader2, AlertCircle, FolderOpen } from 'lucide-react';
+import { Plus, Search, Loader2, AlertCircle, FolderOpen, User, Play, Archive } from 'lucide-react';
 import { usePatients } from '../hooks/usePatients';
+import { usePatientEditSessions } from '../hooks/usePatientEditSessions';
 import { Patient } from '../types/patient';
+import { EditSession } from '../types/patientWorkflow';
 import { formatBirthdateWithAge } from '../utils/ageCalculator';
 import { AddPatientModal } from '../components/patient/AddPatientModal';
+import { PatientSessionSelectDialog } from '../components/patient/PatientSessionSelectDialog';
 import { Notification, useNotification } from '../components/layout/Notification';
 
 interface PatientListPageProps {
   onViewWorkflows?: (patientId: string) => void;
   onCreateWorkflow?: (patientId: string) => void;
+  onViewPatientDetail?: (patientId: string) => void;
+  onResumeEditSession?: (patientId: string, session: EditSession) => void;
 }
 
-export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflows, onCreateWorkflow }) => {
+export const PatientListPage: React.FC<PatientListPageProps> = ({ 
+  onViewWorkflows, 
+  onCreateWorkflow, 
+  onViewPatientDetail, 
+  onResumeEditSession 
+}) => {
   const { patients, loading, error, addPatient } = usePatients();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [selectedPatientForSession, setSelectedPatientForSession] = useState<Patient | null>(null);
+  const [patientSessions, setPatientSessions] = useState<EditSession[]>([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const { notification, showNotification, hideNotification } = useNotification();
+
+  // 編集セッション情報を取得
+  const patientIds = patients.map(p => p.id);
+  const { 
+    sessionSummaries, 
+    getPatientSessions, 
+    getPatientSessionSummary 
+  } = usePatientEditSessions(patientIds);
 
   const filteredPatients = patients.filter((patient) =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -41,6 +63,54 @@ export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflow
     } else {
       console.log('ワークフロー作成:', patientId);
     }
+  };
+
+  const handleViewPatientDetail = (patientId: string) => {
+    if (onViewPatientDetail) {
+      onViewPatientDetail(patientId);
+    } else {
+      console.log('患者詳細表示:', patientId);
+    }
+  };
+
+  const handleResumeSession = async (patient: Patient) => {
+    setSelectedPatientForSession(patient);
+    setSessionLoading(true);
+    
+    try {
+      const sessions = await getPatientSessions(patient.id);
+      setPatientSessions(sessions);
+      setSessionDialogOpen(true);
+    } catch (error) {
+      showNotification('error', '編集セッション情報の取得に失敗しました');
+      console.error('Error loading patient sessions:', error);
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleSessionSelect = (session: EditSession) => {
+    if (onResumeEditSession && selectedPatientForSession) {
+      onResumeEditSession(selectedPatientForSession.id, session);
+    }
+    setSessionDialogOpen(false);
+    setSelectedPatientForSession(null);
+  };
+
+  const formatSessionInfo = (patientId: string) => {
+    const summary = getPatientSessionSummary(patientId);
+    if (!summary || summary.totalSessions === 0) {
+      return null;
+    }
+
+    const daysSinceUpdate = summary.lastUpdated ? 
+      Math.floor((Date.now() - summary.lastUpdated.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+    return {
+      count: summary.totalSessions,
+      lastUpdated: daysSinceUpdate,
+      isRecent: summary.hasRecentSessions
+    };
   };
 
   if (loading) {
@@ -120,33 +190,79 @@ export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflow
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     最終来院日
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    編集セッション
+                  </th>
                   <th className="relative px-6 py-3">
                     <span className="sr-only">操作</span>
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPatients.map((patient: Patient) => (
-                  <tr key={patient.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {patient.patientId}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {patient.name}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {patient.nameKana}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatBirthdateWithAge(patient.birthdate)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatLastVisitDate(patient.lastVisitDate)}
-                    </td>
+                {filteredPatients.map((patient: Patient) => {
+                  const sessionInfo = formatSessionInfo(patient.id);
+                  return (
+                    <tr key={patient.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {patient.patientId}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {patient.name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {patient.nameKana}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatBirthdateWithAge(patient.birthdate)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatLastVisitDate(patient.lastVisitDate)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {sessionInfo ? (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <Archive className="w-4 h-4 text-gray-400" />
+                              <span className="text-gray-900">{sessionInfo.count}件</span>
+                            </div>
+                            {sessionInfo.isRecent && (
+                              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                                最近更新
+                              </span>
+                            )}
+                            {sessionInfo.lastUpdated !== null && (
+                              <span className="text-xs text-gray-500">
+                                {sessionInfo.lastUpdated === 0 ? '今日' : 
+                                 sessionInfo.lastUpdated === 1 ? '1日前' : 
+                                 `${sessionInfo.lastUpdated}日前`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">なし</span>
+                        )}
+                      </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleViewPatientDetail(patient.id)}
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <User className="w-3 h-3 mr-1" />
+                          詳細
+                        </button>
+                        {sessionInfo && (
+                          <button
+                            onClick={() => handleResumeSession(patient)}
+                            disabled={sessionLoading}
+                            className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors disabled:opacity-50"
+                          >
+                            <Play className="w-3 h-3 mr-1" />
+                            セッション再開
+                          </button>
+                        )}
                         <button
                           onClick={() => handleCreateWorkflow(patient.id)}
                           className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
@@ -164,7 +280,8 @@ export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflow
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -178,6 +295,19 @@ export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflow
         onSuccess={(message) => showNotification('success', message)}
       />
 
+      <PatientSessionSelectDialog
+        isOpen={sessionDialogOpen}
+        onClose={() => {
+          setSessionDialogOpen(false);
+          setSelectedPatientForSession(null);
+        }}
+        onResumeSession={handleSessionSelect}
+        patient={selectedPatientForSession}
+        sessions={patientSessions}
+        loading={sessionLoading}
+        error={null}
+      />
+
       <Notification
         type={notification.type}
         message={notification.message}
@@ -187,3 +317,5 @@ export const PatientListPage: React.FC<PatientListPageProps> = ({ onViewWorkflow
     </div>
   );
 };
+
+export default PatientListPage;

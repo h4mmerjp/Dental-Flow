@@ -1,0 +1,159 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Edit Sessions Collection
+    match /editSessions/{sessionId} {
+      // Allow read access to own edit sessions
+      allow read: if request.auth != null && 
+                     (resource.data.createdBy == request.auth.uid ||
+                      resource.data.isPublic == true);
+      
+      // Allow create if user is authenticated
+      allow create: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateEditSession(resource.data);
+      
+      // Allow update if user is the creator
+      allow update: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateEditSession(resource.data);
+      
+      // Allow delete if user is the creator
+      allow delete: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy;
+    }
+
+    // Patient Workflows Collection
+    match /patientWorkflows/{workflowId} {
+      // Allow read access to own workflows
+      allow read: if request.auth != null && 
+                     resource.data.createdBy == request.auth.uid;
+      
+      // Allow create if user is authenticated
+      allow create: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateWorkflow(resource.data);
+      
+      // Allow update if user is the creator
+      allow update: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateWorkflow(resource.data);
+      
+      // Allow delete if user is the creator
+      allow delete: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy;
+    }
+
+    // Workflow Templates Collection
+    match /workflowTemplates/{templateId} {
+      // Allow read access to public templates or own templates
+      allow read: if request.auth != null && 
+                     (resource.data.createdBy == request.auth.uid ||
+                      resource.data.isPublic == true);
+      
+      // Allow create if user is authenticated
+      allow create: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateTemplate(resource.data);
+      
+      // Allow update if user is the creator
+      allow update: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validateTemplate(resource.data);
+      
+      // Allow delete if user is the creator
+      allow delete: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy;
+    }
+
+    // Patients Collection
+    match /patients/{patientId} {
+      // Allow read access to own patients
+      allow read: if request.auth != null && 
+                     resource.data.createdBy == request.auth.uid;
+      
+      // Allow create if user is authenticated
+      allow create: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validatePatient(resource.data);
+      
+      // Allow update if user is the creator
+      allow update: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy &&
+                       validatePatient(resource.data);
+      
+      // Allow delete if user is the creator
+      allow delete: if request.auth != null &&
+                       request.auth.uid == resource.data.createdBy;
+    }
+
+    // Validation functions
+    function validateEditSession(data) {
+      return data.keys().hasAll([
+        'sessionName', 'patientId', 'toothConditions', 'workflowNodes',
+        'scheduleSlots', 'settings', 'createdBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.sessionName is string &&
+      data.sessionName.size() > 0 &&
+      data.sessionName.size() <= 100 &&
+      data.patientId is string &&
+      data.patientId.size() > 0 &&
+      data.toothConditions is map &&
+      data.workflowNodes is list &&
+      data.scheduleSlots is list &&
+      data.settings is map &&
+      data.createdBy is string &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function validateWorkflow(data) {
+      return data.keys().hasAll([
+        'patientId', 'toothConditions', 'workflowNodes', 'scheduleSlots',
+        'status', 'priority', 'createdBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.patientId is string &&
+      data.patientId.size() > 0 &&
+      data.toothConditions is map &&
+      data.workflowNodes is list &&
+      data.scheduleSlots is list &&
+      data.status is string &&
+      data.status in ['draft', 'in_progress', 'completed', 'cancelled'] &&
+      data.priority is string &&
+      data.priority in ['low', 'medium', 'high'] &&
+      data.createdBy is string &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function validateTemplate(data) {
+      return data.keys().hasAll([
+        'templateName', 'category', 'sourceType', 'createdBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.templateName is string &&
+      data.templateName.size() > 0 &&
+      data.templateName.size() <= 100 &&
+      data.category is string &&
+      data.category in ['general', 'periodontal', 'endodontic', 'prosthetic', 'oral_surgery', 'orthodontic'] &&
+      data.sourceType is string &&
+      data.sourceType in ['manual', 'edit_session'] &&
+      data.createdBy is string &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function validatePatient(data) {
+      return data.keys().hasAll([
+        'name', 'patientId', 'createdBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.name is string &&
+      data.name.size() > 0 &&
+      data.name.size() <= 100 &&
+      data.patientId is string &&
+      data.patientId.size() > 0 &&
+      data.createdBy is string &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+  }
+}

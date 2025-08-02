@@ -17,7 +17,9 @@ import { db } from '../firebase/config';
 import { useAuth } from './useAuth';
 import { 
   PatientWorkflow, 
-  PatientWorkflowFormData 
+  PatientWorkflowFormData,
+  WorkflowTemplate,
+  EditSession 
 } from '../types/patientWorkflow';
 
 export const usePatientWorkflows = (patientId?: string) => {
@@ -224,6 +226,111 @@ export const usePatientWorkflows = (patientId?: string) => {
     return workflows.filter(workflow => workflow.status === 'active');
   }, [workflows]);
 
+  const createWorkflowFromTemplate = async (
+    patientId: string,
+    template: WorkflowTemplate,
+    workflowTitle?: string
+  ): Promise<string> => {
+    try {
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      const workflowData: PatientWorkflowFormData = {
+        workflowTitle: workflowTitle || `${template.templateName} - 患者ワークフロー`,
+        description: template.description || `${template.templateName}テンプレートから作成`,
+        toothConditions: template.toothConditions,
+        settings: template.settings
+      };
+
+      const docRef = await addDoc(collection(db, 'patientWorkflows'), {
+        patientId,
+        workflowTitle: workflowData.workflowTitle,
+        description: workflowData.description,
+        toothConditions: workflowData.toothConditions,
+        workflowNodes: template.workflowNodes,
+        settings: workflowData.settings || {},
+        status: 'draft',
+        editState: {
+          scheduleSlots: template.scheduleSlots,
+          selectedTreatmentOptions: template.selectedTreatmentOptions,
+          lastEditedAt: serverTimestamp()
+        },
+        
+        // ソース情報
+        sourceType: 'template',
+        sourceId: template.id,
+        
+        // メタデータ
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: currentUser.uid,
+      });
+
+      return docRef.id;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to create workflow from template');
+      setError(error);
+      throw error;
+    }
+  };
+
+  const createWorkflowFromEditSession = async (
+    editSession: EditSession,
+    workflowTitle?: string
+  ): Promise<string> => {
+    try {
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      const workflowData: PatientWorkflowFormData = {
+        workflowTitle: workflowTitle || `${editSession.sessionName} - ワークフロー`,
+        description: `編集セッション「${editSession.sessionName}」から作成されたワークフロー`,
+        toothConditions: editSession.toothConditions,
+        settings: editSession.settings
+      };
+
+      const docRef = await addDoc(collection(db, 'patientWorkflows'), {
+        patientId: editSession.patientId,
+        workflowTitle: workflowData.workflowTitle,
+        description: workflowData.description,
+        toothConditions: workflowData.toothConditions,
+        workflowNodes: editSession.workflowNodes,
+        settings: workflowData.settings || {},
+        status: 'draft',
+        priority: 'medium',
+        editState: {
+          scheduleSlots: editSession.scheduleSlots,
+          selectedTreatmentOptions: editSession.selectedTreatmentOptions,
+          lastEditedAt: serverTimestamp()
+        },
+        
+        // ソース情報
+        sourceType: 'edit_session',
+        sourceId: editSession.id,
+        
+        // メタデータ
+        metadata: {
+          originalSessionName: editSession.sessionName,
+          createdFromSession: true,
+          sessionCreatedAt: editSession.createdAt,
+          sessionUpdatedAt: editSession.updatedAt
+        },
+        
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: currentUser.uid,
+      });
+
+      return docRef.id;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to create workflow from edit session');
+      setError(error);
+      throw error;
+    }
+  };
+
   return {
     workflows,
     loading,
@@ -238,5 +345,7 @@ export const usePatientWorkflows = (patientId?: string) => {
     getActiveWorkflows,
     saveEditState,
     saveDraft,
+    createWorkflowFromTemplate,
+    createWorkflowFromEditSession,
   };
 };

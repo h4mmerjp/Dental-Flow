@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Settings, Plus, Calendar, User, ArrowLeft, Clock, X, Save, Menu, Archive } from 'lucide-react';
+import { Play, Settings, Plus, Calendar, User, ArrowLeft, Clock, X, Save, Menu, Archive, BookOpen } from 'lucide-react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
@@ -11,8 +11,11 @@ import { ToothChart } from '../components/workflow/ToothChart';
 import { ConditionSelector } from '../components/workflow/ConditionSelector';
 import { WorkflowSettings } from '../components/workflow/WorkflowSettings';
 import { EditSessionList } from '../components/workflow/EditSessionList';
+import { EditSessionSaveDialog } from '../components/workflow/EditSessionSaveDialog';
+import { EditSessionRestoreDialog } from '../components/workflow/EditSessionRestoreDialog';
 import { Notification, useNotification } from '../components/layout/Notification';
 import { EditSession } from '../types/patientWorkflow';
+import { useEditSessionRestore } from '../hooks/useEditSessionRestore';
 
 interface DentalWorkflowPageProps {
   patientId?: string | null;
@@ -50,6 +53,15 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
   const { patients } = usePatients();
   const { createWorkflow, updateWorkflowNodes, updateWorkflow, getWorkflowById } = usePatientWorkflows();
   const { notification, showNotification, hideNotification } = useNotification();
+  const { 
+    loading: restoreLoading, 
+    error: restoreError, 
+    editSessions, 
+    showRestoreDialog, 
+    openRestoreDialog, 
+    closeRestoreDialog, 
+    applyEditSession 
+  } = useEditSessionRestore();
   const [showSettings, setShowSettings] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentWorkflowData, setCurrentWorkflowData] = useState<any>(null);
@@ -61,6 +73,7 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [showTemplateSaveDialog, setShowTemplateSaveDialog] = useState(false);
 
   const selectedPatient = patientId ? patients.find(p => p.id === patientId) : null;
 
@@ -263,6 +276,61 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
       showNotification('error', '編集セッションの復元に失敗しました');
       console.error('Error restoring session:', error);
     }
+  };
+
+  const handleRestoreFromDialog = (session: EditSession) => {
+    try {
+      // 歯式状態を復元
+      setToothConditions(session.toothConditions);
+      
+      // ワークフロー設定を復元
+      updateSettings(session.settings);
+      
+      // ワークフローノードを復元
+      setWorkflow(session.workflowNodes);
+      
+      // スケジュールスロットを復元
+      setScheduleSlots(session.scheduleSlots);
+      
+      // 現在のセッションIDを設定（自動保存のため）
+      setCurrentSessionId(session.id);
+      
+      closeRestoreDialog();
+      showNotification('success', `編集セッション「${session.sessionName}」を復元しました！`);
+    } catch (error) {
+      showNotification('error', '編集セッションの復元に失敗しました');
+      console.error('Error restoring session:', error);
+    }
+  };
+
+  const handleSaveAsTemplate = () => {
+    setShowTemplateSaveDialog(true);
+  };
+
+  const handleTemplateSaved = (templateId: string) => {
+    showNotification('success', 'ワークフローテンプレートを保存しました！');
+    setShowTemplateSaveDialog(false);
+  };
+
+  const getCurrentEditSession = (): EditSession => {
+    return {
+      id: currentSessionId || `temp_${Date.now()}`,
+      sessionName: `編集セッション - ${selectedPatient?.name} - ${new Date().toLocaleDateString()}`,
+      patientId: selectedPatient!.id,
+      toothConditions,
+      workflowNodes: workflow,
+      scheduleSlots,
+      selectedTreatmentOptions: workflow.reduce((acc, node) => {
+        acc[node.treatmentKey] = node.selectedTreatmentIndex;
+        return acc;
+      }, {} as any),
+      settings,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: undefined,
+      originalWorkflowId: isEditMode ? currentWorkflowData?.id : undefined,
+      isTemporary: true
+    };
   };
 
   const handleSaveToWorkflow = async () => {
@@ -846,17 +914,39 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
                       <Clock className="w-4 h-4" />
                       セッションから開始
                     </button>
+                    <button
+                      onClick={() => {
+                        openRestoreDialog(patientId);
+                        setShowSessionMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <Play className="w-4 h-4" />
+                      編集セッションを復元
+                    </button>
                     {workflow.length > 0 && selectedPatient && (
-                      <button
-                        onClick={() => {
-                          handleSaveEditSession();
-                          setShowSessionMenu(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                      >
-                        <Save className="w-4 h-4" />
-                        現在の状態を保存
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            handleSaveEditSession();
+                            setShowSessionMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <Save className="w-4 h-4" />
+                          現在の状態を保存
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleSaveAsTemplate();
+                            setShowSessionMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          テンプレートとして保存
+                        </button>
+                      </>
                     )}
                     <div className="border-t border-gray-200 mt-2 pt-2">
                       <div className="px-4 py-2 flex items-center justify-between">
@@ -1040,6 +1130,26 @@ export const DentalWorkflowPage: React.FC<DentalWorkflowPageProps> = ({
           onClose={() => setShowSessionList(false)}
         />
       )}
+
+      {/* テンプレート保存ダイアログ */}
+      {showTemplateSaveDialog && selectedPatient && workflow.length > 0 && (
+        <EditSessionSaveDialog
+          editSession={getCurrentEditSession()}
+          isOpen={showTemplateSaveDialog}
+          onClose={() => setShowTemplateSaveDialog(false)}
+          onSave={handleTemplateSaved}
+        />
+      )}
+
+      {/* 編集セッション復元ダイアログ */}
+      <EditSessionRestoreDialog
+        isOpen={showRestoreDialog}
+        onClose={closeRestoreDialog}
+        onRestore={handleRestoreFromDialog}
+        editSessions={editSessions}
+        loading={restoreLoading}
+        error={restoreError}
+      />
 
       {/* 通知 */}
       <Notification
